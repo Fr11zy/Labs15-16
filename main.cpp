@@ -53,8 +53,24 @@ int main() {
     std::cout << matr3 << std::endl;
     outresult << matr3 << std::endl;
 
+    std::cout << "Обратная матрица" << std::endl;
     std::cout << !matr_from_file << std::endl;
     outresult << !matr_from_file << std::endl;
+
+    Matrix<double> sum_result_parallel = matr_from_file.sum_parallel(matr_from_console);
+    Matrix<double> subtract_result_parallel = matr_from_file.subtract_parallel(matr_from_console);
+    Matrix<double> multiply_result_parallel = matr_from_file.multiply_parallel(matr_from_console);
+
+    //Параллельное сложение с использованием std::async
+    auto future_F = matr_from_file.sum_async(matr_from_console,2);
+    Matrix<double> matrF = future_F.get();
+    std::cout << "Сложение двух матриц(async)" << std::endl;
+    std::cout << matrF << std::endl;
+    outresult << matrF << std::endl; 
+
+    std::cout << "Сложение двух матриц (параллельно)" << std::endl;
+    std::cout << sum_result_parallel << std::endl;
+    outresult << sum_result_parallel << std::endl;
 
     return 0;
 }

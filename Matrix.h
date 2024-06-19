@@ -1,10 +1,10 @@
 #ifndef MATRIX_H_
 #define MATRIX_H_
 
-#include <iostream>
 #include <fstream>
 #include <thread>
 #include <future>
+#include <chrono>
 #include <stdexcept>
 #include <vector>
 
@@ -141,13 +141,13 @@ class Matrix {
         const T &get(int N, int M) const
         {
             if (!(this->isIndexesOK(N,M)))
-                throw std::invalid_argument()"Максимальное количество строк - "+std::to_string(this->getN()-1)+","+"Максимальное количество столбцов - "+std::to_string(this->getM()-1));
+                throw std::invalid_argument("Максимальное количество строк - "+std::to_string(this->getN()-1)+","+"Максимальное количество столбцов - "+std::to_string(this->getM()-1));
             return this->A[N][M];    
         }
         void set(int N, int M, T newelem)
         {
             if (!(this->isIndexesOK(N,M)))
-                throw std::invalid_argument()"Максимальное количество строк - "+std::to_string(this->getN()-1)+","+"Максимальное количество столбцов - "+std::to_string(this->getM()-1));
+                throw std::invalid_argument("Максимальное количество строк - "+std::to_string(this->getN()-1)+","+"Максимальное количество столбцов - "+std::to_string(this->getM()-1));
             this->A[N][M]=std::abs(newelem)< Pogr? 0: newelem; 
         }
         int getN() const 
@@ -339,73 +339,226 @@ class Matrix {
         }
 
         // Потоки task 1
-        Matrix sum_parallel(const Matrix& other) const {
-            if (this->N != other.getN() || this->M != other.getM())
+        Matrix sum_parallel(const Matrix& other) const
+        {
+            if (N != other.N || M != other.M)
+            {
                 throw std::invalid_argument("Размеры матриц должны быть одинаковыми");
-            
+            }
+
             Matrix<T> result(N, M);
-            std::vector<std::thread> threads;
-            for (int i = 0; i < N; ++i) {
-                threads.emplace_back([this, &result, &other, i]() {
-                    for (int j = 0; j < M; ++j) {
+            int num_threads = std::thread::hardware_concurrency();
+            int rows_per_thread = N / num_threads;
+
+            auto add_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < M; ++j)
+                    {
                         result.set(i, j, this->get(i, j) + other.get(i, j));
                     }
-                });
+                }
+            };
+
+            std::vector<std::thread> threads;
+            for (int i = 0; i < num_threads; ++i)
+            {
+                int start_row = i * rows_per_thread;
+                int end_row = (i == num_threads - 1) ? N : (i + 1) * rows_per_thread;
+                threads.push_back(std::thread(add_blocks, start_row, end_row));
             }
-            
-            for (auto& thread : threads) {
-                thread.join();
+
+            for (auto& t : threads)
+            {
+                t.join();
             }
 
             return result;
         }
-        Matrix subtract_parallel(const Matrix& other) const {
-            if (N != other.getN() || M != other.getM()) 
+
+        Matrix subtract_parallel(const Matrix& other) const
+        {
+            if (N != other.N || M != other.M)
+            {
                 throw std::invalid_argument("Размеры матриц должны быть одинаковыми");
-            
+            }
+
             Matrix<T> result(N, M);
-            std::vector<std::thread> threads;
-            for (int i = 0; i < N; ++i) {
-                threads.emplace_back([this, &result, &other, i]() {
-                    for (int j = 0; j < M; ++j) {
+            int num_threads = std::thread::hardware_concurrency();
+            int rows_per_thread = N / num_threads;
+
+            auto subtract_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < M; ++j)
+                    {
                         result.set(i, j, this->get(i, j) - other.get(i, j));
                     }
-                });
+                }
+            };
+
+            std::vector<std::thread> threads;
+            for (int i = 0; i < num_threads; ++i)
+            {
+                int start_row = i * rows_per_thread;
+                int end_row = (i == num_threads - 1) ? N : (i + 1) * rows_per_thread;
+                threads.push_back(std::thread(subtract_blocks, start_row, end_row));
             }
-            
-            for (auto& thread : threads) {
-                thread.join();
+
+            for (auto& t : threads)
+            {
+                t.join();
             }
-            
+
             return result;
         }
 
-        Matrix multiply_parallel(const Matrix& other) const {
-            if (M != other.getN())
-                throw std::invalid_argument("Количество столбцов 1-ой матрицы должно совпадать c количеством строк 2-ой матрицы");
+        Matrix multiply_parallel(const Matrix& other) const
+        {
+            if (M != other.N)
+            {
+                throw std::invalid_argument("Количество столбцов первой матрицы должно совпадать с количеством строк второй матрицы");
+            }
 
-            Matrix<T> result(N, other.getM());
-            std::vector<std::thread> threads;
-            for (int i = 0; i < N; ++i) {
-                threads.emplace_back([this, &result, &other, i]() {
-                    for (int j = 0; j < other.getM(); ++j) {
+            Matrix<T> result(N, other.M);
+            int num_threads = std::thread::hardware_concurrency();
+            int rows_per_thread = N / num_threads;
+
+            auto multiply_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < other.M; ++j)
+                    {
                         T sum = 0;
-                        for (int k = 0; k < M; ++k) {
+                        for (int k = 0; k < M; ++k)
+                        {
                             sum += this->get(i, k) * other.get(k, j);
                         }
                         result.set(i, j, sum);
                     }
-                });
+                }
+            };
+
+            std::vector<std::thread> threads;
+            for (int i = 0; i < num_threads; ++i)
+            {
+                int start_row = i * rows_per_thread;
+                int end_row = (i == num_threads - 1) ? N : (i + 1) * rows_per_thread;
+                threads.push_back(std::thread(multiply_blocks, start_row, end_row));
             }
-            
-            for (auto& thread : threads) {
-                thread.join();
+
+            for (auto& t : threads)
+            {
+                t.join();
             }
-            
+
             return result;
         }
 
-        
+        // Потоки task 2
+        std::future<Matrix<T>> sum_async(const Matrix<T>& other, unsigned int blocks) const
+        {
+            if (N != other.N || M != other.M)
+            {
+                throw std::invalid_argument("Размеры матриц должны быть одинаковыми");
+            }
+
+            Matrix<T> result(N, M);
+            auto add_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < M; ++j)
+                    {
+                        result.set(i, j, this->get(i, j) + other.get(i, j));
+                    }
+                }
+            };
+
+            std::vector<std::future<void>> futures;
+            for (int start_row = 0; start_row < N; start_row += static_cast<int>(blocks))
+            {
+                int end_row = std::min(start_row + static_cast<int>(blocks), N);
+                futures.push_back(std::async(std::launch::async, add_blocks, start_row, end_row));
+            }
+
+            for (auto& f : futures)
+            {
+                f.get();
+            }
+
+            return std::async(std::launch::deferred, [result]() { return result; });
+        }
+
+        std::future<Matrix<T>> subtract_async(const Matrix<T>& other, unsigned int blocks) const
+        {
+            if (N != other.N || M != other.M)
+            {
+                throw std::invalid_argument("Размеры матриц должны быть одинаковыми");
+            }
+
+            Matrix<T> result(N, M);
+            auto subtract_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < M; ++j)
+                    {
+                        result.set(i, j, this->get(i, j) - other.get(i, j));
+                    }
+                }
+            };
+
+            std::vector<std::future<void>> futures;
+            for (int start_row = 0; start_row < N; start_row += static_cast<int>(blocks))
+            {
+                int end_row = std::min(start_row + static_cast<int>(blocks), N);
+                futures.push_back(std::async(std::launch::async, subtract_blocks, start_row, end_row));
+            }
+
+            for (auto& f : futures)
+            {
+                f.get();
+            }
+
+            return std::async(std::launch::deferred, [result]() { return result; });
+        }
+
+        std::future<Matrix<T>> multiply_async(const Matrix<T>& other, unsigned int blocks) const
+        {
+            if (M != other.N)
+            {
+                throw std::invalid_argument("Количество столбцов первой матрицы должно совпадать с количеством строк второй матрицы");
+            }
+
+            Matrix<T> result(N, other.M);
+            auto multiply_blocks = [&](int start_row, int end_row) {
+                for (int i = start_row; i < end_row; ++i)
+                {
+                    for (int j = 0; j < other.M; ++j)
+                    {
+                        T sum = 0;
+                        for (int k = 0; k < M; ++k)
+                        {
+                            sum += this->get(i, k) * other.get(k, j);
+                        }
+                        result.set(i, j, sum);
+                    }
+                }
+            };
+
+            std::vector<std::future<void>> futures;
+            for (int start_row = 0; start_row < N; start_row += static_cast<int>(blocks))
+            {
+                int end_row = std::min(start_row + static_cast<int>(blocks), N);
+                futures.push_back(std::async(std::launch::async, multiply_blocks, start_row, end_row));
+            }
+
+            for (auto& f : futures)
+            {
+                f.get();
+            }
+
+            return std::async(std::launch::deferred, [result]() { return result; });
+        }
 };
 
 template<typename T>
