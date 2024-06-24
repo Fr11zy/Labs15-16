@@ -1,5 +1,5 @@
-#include <iostream>
 #include <string>
+#include <iostream>
 #include "Matrix.h"
 
 int main() {   
@@ -62,7 +62,7 @@ int main() {
     Matrix<double> multiply_result_parallel = matr_from_file.multiply_parallel(matr_from_console);
 
     //Параллельное сложение с использованием std::async
-    auto future_F = matr_from_file.sum_async(matr_from_console,2);
+    auto future_F = matr_from_file.sum_async(matr_from_console,4);
     Matrix<double> matrF = future_F.get();
     std::cout << "Сложение двух матриц(async)" << std::endl;
     std::cout << matrF << std::endl;
@@ -71,6 +71,15 @@ int main() {
     std::cout << "Сложение двух матриц (параллельно)" << std::endl;
     std::cout << sum_result_parallel << std::endl;
     outresult << sum_result_parallel << std::endl;
+
+    // Измерение времени
+    // Измерение времени выполнения операций над матрицами
+    std::cout << "Performance measurement based on matrix size:" << std::endl;
+    Matrix<int>::measure_performance();
+
+    // Измерение времени выполнения операций при различном числе потоков
+    std::cout << "Scaling measurement based on number of threads and matrix size:" << std::endl;
+    Matrix<int>::measure_scaling();
 
     return 0;
 }

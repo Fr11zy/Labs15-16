@@ -1,6 +1,7 @@
 #ifndef MATRIX_H_
 #define MATRIX_H_
 
+#include <iostream>
 #include <fstream>
 #include <thread>
 #include <future>
@@ -9,6 +10,10 @@
 #include <vector>
 
 #define Pogr 1e-9
+
+double calculate_theoretical_speedup(double P, int threads) {
+    return (1/((1-P)+(P/threads)));
+}
 
 template<typename T>
 class Matrix {
@@ -559,6 +564,149 @@ class Matrix {
 
             return std::async(std::launch::deferred, [result]() { return result; });
         }
+
+        // Методы для измерения времени
+        static void measure_performance() {
+            std::vector<int> sizes = {100, 200, 400, 800, 1600}; // Размеры матриц
+            unsigned int blocks = 4; // Размер блока
+
+            for (int size : sizes) {
+                Matrix<T> Matrix1(size, size);
+                Matrix<T> Matrix2(size, size);
+
+                // Заполняем матрицы случайными значениями
+                for (int i = 0; i < size; ++i) {
+                    for (int j = 0; j < size; ++j) {
+                        Matrix1.set(i, j, rand() % 100);
+                        Matrix2.set(i, j, rand() % 100);
+                    }
+                }
+
+                auto start = std::chrono::high_resolution_clock::now();
+                auto future_sum = Matrix1.sum_async(Matrix2, blocks);
+                future_sum.get();
+                auto end = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> duration = end - start;
+                std::cout << "Sum - Size: " << size << "x" << size << ", Time: " << duration.count() << " seconds" << std::endl;
+
+                start = std::chrono::high_resolution_clock::now();
+                auto future_subtract = Matrix1.subtract_async(Matrix2, blocks);
+                future_subtract.get();
+                end = std::chrono::high_resolution_clock::now();
+                duration = end - start;
+                std::cout << "Subtract - Size: " << size << "x" << size << ", Time: " << duration.count() << " seconds" << std::endl;
+
+                start = std::chrono::high_resolution_clock::now();
+                auto future_multiply = Matrix1.multiply_async(Matrix2, blocks);
+                future_multiply.get();
+                end = std::chrono::high_resolution_clock::now();
+                duration = end - start;
+                std::cout << "Multiply - Size: " << size << "x" << size << ", Time: " << duration.count() << " seconds" << std::endl;
+            }
+        }
+        static void measure_scaling() {
+            std::vector<int> sizes = {100, 200, 400, 800}; // Размеры матриц
+            std::vector<int> threads = {1, 2, 4, 8, 16}; // Количество потоков
+            double P = 0.9; // Предполагаемая доля параллельной части задачи
+
+            for (int size : sizes) {
+                Matrix<T> Matrix1(size, size);
+                Matrix<T> Matrix2(size, size);
+
+                // Заполняем матрицы случайными значениями
+                for (int i = 0; i < size; ++i) {
+                    for (int j = 0; j < size; ++j) {
+                        Matrix1.set(i, j, rand() % 100);
+                        Matrix2.set(i, j, rand() % 100);
+                    }
+                }
+
+                double sum_sequential_time = 0;
+                {
+                    auto start_sum = std::chrono::high_resolution_clock::now();
+                    auto future_sum = Matrix1.sum_async(Matrix2, size); // Используем один блок, чтобы получить последовательное время выполнения
+                    future_sum.get();
+                    auto end_sum = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_sum = end_sum - start_sum;
+                    sum_sequential_time = duration_sum.count();
+                }
+
+                double subtract_sequential_time = 0;
+                {
+                    auto start_subtract = std::chrono::high_resolution_clock::now();
+                    auto future_subtract = Matrix1.subtract_async(Matrix2, size); // Используем один блок, чтобы получить последовательное время выполнения
+                    future_subtract.get();
+                    auto end_subtract = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_subtract = end_subtract - start_subtract;
+                    subtract_sequential_time = duration_subtract.count();
+                }
+
+                double multiply_sequential_time = 0;
+                {
+                    auto start_multiply = std::chrono::high_resolution_clock::now();
+                    auto future_multiply = Matrix1.multiply_async(Matrix2, size); // Используем один блок, чтобы получить последовательное время выполнения
+                    future_multiply.get();
+                    auto end_multiply = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_multiply = end_multiply - start_multiply;
+                    multiply_sequential_time = duration_multiply.count();
+                }
+
+                for (int num_threads : threads) {
+                    auto start_sum = std::chrono::high_resolution_clock::now();
+                    auto future_sum = Matrix1.sum_async(Matrix2, size / num_threads);
+                    future_sum.get();
+                    auto end_sum = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_sum = end_sum - start_sum;
+                    double sum_parallel_time = duration_sum.count();
+
+                    double sum_theoretical_speedup = calculate_theoretical_speedup(P, num_threads);
+                    double sum_empirical_speedup = sum_sequential_time / sum_parallel_time;
+
+                    std::cout << "Sum - Size: " << size << "x" << size << ", Threads: " << num_threads
+                        << ", Sequential Time: " << sum_sequential_time << " s"
+                        << ", Parallel Time: " << sum_parallel_time << " s"
+                        << ", Theoretical Speedup: " << sum_theoretical_speedup
+                        << ", Empirical Speedup: " << sum_empirical_speedup
+                        << std::endl;
+
+                    auto start_subtract = std::chrono::high_resolution_clock::now();
+                    auto future_subtract = Matrix1.subtract_async(Matrix2, size / num_threads);
+                    future_subtract.get();
+                    auto end_subtract = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_subtract = end_subtract - start_subtract;
+                    double subtract_parallel_time = duration_subtract.count();
+
+                    double subtract_theoretical_speedup = calculate_theoretical_speedup(P, num_threads);
+                    double subtract_empirical_speedup = subtract_sequential_time / subtract_parallel_time;
+
+                    std::cout << "Subtract - Size: " << size << "x" << size << ", Threads: " << num_threads
+                        << ", Sequential Time: " << subtract_sequential_time << " s"
+                        << ", Parallel Time: " << subtract_parallel_time << " s"
+                        << ", Theoretical Speedup: " << subtract_theoretical_speedup
+                        << ", Empirical Speedup: " << subtract_empirical_speedup
+                        << std::endl;
+                    
+                    auto start_multiply = std::chrono::high_resolution_clock::now();
+                    auto future_multiply = Matrix1.multiply_async(Matrix2, size / num_threads);
+                    future_multiply.get();
+                    auto end_multiply = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> duration_multiply = end_multiply - start_multiply;
+                    double multiply_parallel_time = duration_multiply.count();
+
+                    double multiply_theoretical_speedup = calculate_theoretical_speedup(P, num_threads);
+                    double multiply_empirical_speedup = multiply_sequential_time / multiply_parallel_time;
+
+                    std::cout << "Multiply - Size: " << size << "x" << size << ", Threads: " << num_threads
+                        << ", Sequential Time: " << multiply_sequential_time << " s"
+                        << ", Parallel Time: " << multiply_parallel_time << " s"
+                        << ", Theoretical Speedup: " << multiply_theoretical_speedup
+                        << ", Empirical Speedup: " << multiply_empirical_speedup
+                        << std::endl;
+                }
+
+            }
+        }
+
 };
 
 template<typename T>
